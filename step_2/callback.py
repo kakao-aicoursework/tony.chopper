@@ -2,80 +2,48 @@ from dto import ChatbotRequest
 import aiohttp
 import time
 import logging
-import openai
 import os
 from dotenv import load_dotenv
+from langchain import LLMChain
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts.chat import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate
+)
 
 load_dotenv()
 
 os.environ["OPENAI_API_KEY"] = os.getenv("OPEN_API_KEY")
 
-
-openai.api_key = os.getenv("OPEN_API_KEY")
-
-from langchain.llms import OpenAI
-from langchain.chat_models import ChatOpenAI
-from langchain.utilities import DuckDuckGoSearchAPIWrapper
-from langchain import LLMMathChain
-from langchain.agents.tools import Tool
-from langchain.agents import initialize_agent
-from langchain.llms import OpenAI
-llm = OpenAI(temperature=0.9)
-
-# 환경 변수 처리 필요!
-
-
-SYSTEM_MSG = "당신은 카카오 서비스 제공자입니다."
 logger = logging.getLogger("Callback")
+path = "./assets/project_data_카카오싱크.txt"
 
-path = "./assets/project_data_카카오톡채널.txt"
 with open(path, 'r', encoding='utf-8') as file:
-    data1 = file.read()
+    data = file.read()
 
-path2 = "./assets/project_data_카카오싱크.txt"
+system_msg = f"""
+    너는 카카오 서비스 담당자야. 
+    아래 카카오싱크 매뉴얼을 토대로 답변을 해줘. 만약 카카오싱크에 없는 내용이 있다면 모른다고 대답해줘. 답변은 150자 이내로 해줘
+    
+    <카카오싱크> 
+    {data} 
+    </카카오싱크>
+"""
 
-with open(path2, 'r', encoding='utf-8') as file:
-    data2 = file.read()
-
+chat = ChatOpenAI(temperature=0.8)
 
 
 async def callback_handler(request: ChatbotRequest) -> dict:
     # ===================== start =================================
-
-    message_log = [{
-        "role": "system",
-        "content": f"""
-            너는 카카오톡 상담원이야. 상담을 받는 사람은 한국사람이니까 한국어로 말해줘. 
-            {data1}
-            """
-    }, {"role": "user", "content": request.userRequest.utterance}]
-
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=message_log,
-        temperature=0,
-    )
-    search = DuckDuckGoSearchAPIWrapper()
-
-    tools = [
-        Tool(
-            name="카카오톡채널",
-            func=search.run,
-            description="시사에 관한 질문에 답해야 할 때 유용합니다. 타겟팅된 질문을 해야 합니다.",
-        ),
-        Tool(
-            name="카카오싱크",
-            func=search.run,
-            description="수학 계산을 할 때 유용합니다."
-        )
-    ]
-    agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbose=True)
-    agent.run("일론 머스크 나이에 2를 곱하면 얼마야")
+    system_message_prompt = SystemMessagePromptTemplate.from_template(system_msg)
+    human_message_prompt = HumanMessagePromptTemplate.from_template(f"""{request.userRequest.utterance}에 대해서 대답해줘""")
+    chat_prompt = ChatPromptTemplate.from_messages([system_message_prompt, human_message_prompt])
+    chain = LLMChain(llm=chat, prompt=chat_prompt)
 
     # focus
-    output_text = response.choices[0].message.content
+    output_text = chain.run(question=request.userRequest.utterance)
     print(output_text)
-    message_log.append({"role": "assistant", "content": output_text})
 
     # 참고링크 통해 payload 구조 확인 가능
     payload = {
