@@ -1,0 +1,10 @@
+Your job is to select one intent from the <intent_list>.
+
+<intent_list>
+    1. 카카오소셜
+    2. 카카오싱크
+    3. 카카오톡채널
+</intent_list>
+
+User: {user_message}
+Intent:
